@@ -1,8 +1,8 @@
 ![NeuroMind UI](.github/banner.png)
 
-# NeuroMind - AI Assistant in Your Terminal
+# NeuroMind - Private AI Assistant in Your Terminal
 
-A **high-efficiency, terminal-based AI interface** designed for power users who prefer the command line over web UIs.
+A **private AI assistant** designed for users who prefer the command line over web UIs.
 
 Built with [LangChain](https://www.langchain.com/), [Rich](https://github.com/Textualize/rich), and [SQLite](https://www.sqlite.org/), NeuroMind provides an environment for interacting with local (Ollama) or cloud (Google Gemini) LLMs with persistent memory and specialized personas.
 
