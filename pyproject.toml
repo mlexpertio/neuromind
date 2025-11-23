@@ -24,4 +24,4 @@ pythonpath = [
 ]
 
 [tool.setuptools]
-packages = ["agentor"]
+packages = ["neuromind"]

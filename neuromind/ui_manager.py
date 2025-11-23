@@ -16,7 +16,7 @@ class UIManager:
         self.console.clear()
         self.console.print(
             Panel(
-                f"[bold cyan]NeuroMind CLI[/bold cyan] [dim]| Terminal AI Assistant [/dim]\n"
+                f"[bold cyan]NeuroMind[/bold cyan] [dim]| CLI AI Assistant [/dim]\n"
                 f"Model: [green]{model}[/green] | Thread: [yellow]{thread}[/yellow]\n"
                 "Cmds: [magenta]/new, /switch, /list, /clear, /exit[/magenta]",
                 border_style="cyan",
