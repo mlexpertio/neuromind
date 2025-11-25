@@ -1,3 +1,4 @@
+import json
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -195,15 +196,15 @@ def chat_stream(
 
             # Send incremental updates as SSE
             if chunk.additional_kwargs.get("reasoning_content"):
-                yield f"data: {{'type': 'reasoning', 'content': {repr(chunk.additional_kwargs['reasoning_content'])}}}\n\n"
+                yield f"data: {json.dumps({'type': 'reasoning', 'content': chunk.additional_kwargs['reasoning_content']})}\n\n"
             elif chunk.content:
-                yield f"data: {{'type': 'content', 'content': {repr(chunk.content)}}}\n\n"
+                yield f"data: {json.dumps({'type': 'content', 'content': chunk.content})}\n\n"
 
         # Persist after streaming completes
         db.add_message(thread.id, "human", data.content)
         db.add_message(thread.id, "ai", processor.full_content)
 
-        yield "data: {'type': 'done'}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

@@ -117,10 +117,8 @@ def send_message_streaming(thread_name: str, content: str):
         if not line or not line.startswith("data:"):
             continue
 
-        # Parse SSE data (simple parsing for demo)
-        json_str = line[5:].strip().replace("'", '"')
         try:
-            event = json.loads(json_str)
+            event = json.loads(line[5:].strip())
 
             if event["type"] == "content":
                 print(event["content"], end="", flush=True)
