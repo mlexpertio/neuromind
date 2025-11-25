@@ -51,16 +51,11 @@ class PersonaResponse(BaseModel):
     description: str
 
 
-# --- Dependencies ---
-
-
 def get_db() -> ThreadManager:
-    """Dependency that provides database access."""
     return ThreadManager(Config.Path.DATABASE_FILE)
 
 
 def get_llm():
-    """Dependency that provides the LLM instance."""
     model = Config.MODEL
     return init_chat_model(
         model.name,
@@ -71,7 +66,6 @@ def get_llm():
 
 
 def get_personas() -> dict[str, str]:
-    """Load all persona prompts."""
     return {
         p.value: (Config.Path.PERSONAS_DIR / f"{p.value}.md").read_text()
         for p in Persona
@@ -80,8 +74,6 @@ def get_personas() -> dict[str, str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup/shutdown lifecycle."""
-    # Pre-load personas into app state
     app.state.personas = get_personas()
     yield
 
