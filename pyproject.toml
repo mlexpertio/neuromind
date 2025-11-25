@@ -5,11 +5,14 @@ description = "AI Assistant in Your Terminal"
 readme = "README.md"
 requires-python = ">=3.13.7"
 dependencies = [
-    "langchain>=1.0.8",
-    "langchain-google-genai>=3.1.0",
+    "fastapi>=0.122.0",
+    "langchain>=1.1.0",
+    "langchain-google-genai>=3.2.0",
     "langchain-ollama>=1.0.0",
+    "pydantic>=2.12.4",
     "python-dotenv>=1.2.1",
     "rich>=14.2.0",
+    "uvicorn>=0.34.0",
 ]
 
 [dependency-groups]

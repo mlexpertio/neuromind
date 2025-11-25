@@ -88,11 +88,58 @@ python setup_check.py
 
 ## Usage
 
-Start the application:
+### CLI Application
+
+Start the terminal application:
 
 ```bash
 python app.py
 ```
+
+### REST API
+
+Start the API server:
+
+```bash
+python start_server.py
+```
+
+The API will be available at `http://localhost:8000`. Interactive docs at `/docs`.
+
+#### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/personas` | List available personas |
+| `GET` | `/threads` | List all threads |
+| `POST` | `/threads` | Create a new thread |
+| `GET` | `/threads/{name}` | Get thread by name |
+| `GET` | `/threads/{name}/messages` | Get message history |
+| `DELETE` | `/threads/{name}/messages` | Clear thread messages |
+| `POST` | `/threads/{name}/chat` | Send message, get response |
+| `POST` | `/threads/{name}/chat/stream` | Send message, stream response (SSE) |
+
+#### Quick Examples
+
+```bash
+# Create a thread with the coder persona
+curl -X POST http://localhost:8000/threads \
+  -H "Content-Type: application/json" \
+  -d '{"name": "dev", "persona": "coder"}'
+
+# Chat
+curl -X POST http://localhost:8000/threads/dev/chat \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Explain Python decorators"}'
+
+# Stream response
+curl -N -X POST http://localhost:8000/threads/dev/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Hello!"}'
+```
+
+Run the `client_example.py` for a complete Python client demonstration.
 
 ### Commands
 
@@ -131,7 +178,9 @@ class Config:
 
 | File / Folder | Description |
 |---------------|-------------|
-| `app.py` | Main entry point and application loop. |
+| `app.py` | CLI entry point and application loop. |
+| `server.py` | REST API server (FastAPI). |
+| `client_example.py` | Example Python client for the API. |
 | `neuromind/config.py` | Configuration for models, paths, and constants. |
 | `neuromind/thread_manager.py` | SQLite database wrapper for managing threads and messages. |
 | `neuromind/stream_processor.py` | Handles real-time parsing of LLM chunks (content vs. reasoning). |
