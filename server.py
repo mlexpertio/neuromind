@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 from fastapi.responses import StreamingResponse
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -152,57 +152,8 @@ def _build_context(thread: Thread, user_input: str, personas: dict, db: ThreadMa
     return messages
 
 
-@app.post("/threads/{thread_name}/chat", response_model=ChatResponse)
+@app.post("/threads/{thread_name}/chat")
 async def chat(
-    thread_name: str,
-    data: MessageCreate,
-    db: ThreadManager = Depends(get_db),
-    llm=Depends(get_llm),
-):
-    """Send a message and get an AI response."""
-    thread = db.get_or_create_thread(thread_name)
-    context = _build_context(thread, data.content, app.state.personas, db)
-
-    processor = StreamProcessor()
-
-    try:
-        async for chunk in llm.astream(context):
-            if not chunk.content and not chunk.additional_kwargs.get(
-                "reasoning_content"
-            ):
-                continue
-            processor.process_chunk(chunk)
-    except ConnectionError as e:
-        logger.error(f"LLM connection failed: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"AI model unavailable. Please ensure {Config.MODEL.name} is running.",
-        )
-    except TimeoutError as e:
-        logger.error(f"LLM request timed out: {e}")
-        raise HTTPException(
-            status_code=504,
-            detail="AI model request timed out. Please try again.",
-        )
-    except Exception as e:
-        logger.exception(f"Unexpected error during chat: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"An error occurred while processing your request: {str(e)}",
-        )
-
-    # Persist the conversation
-    db.add_message(thread.id, "human", data.content)
-    db.add_message(thread.id, "ai", processor.full_content)
-
-    return ChatResponse(
-        response=processor.response_buffer,
-        reasoning=processor.thought_buffer or None,
-    )
-
-
-@app.post("/threads/{thread_name}/chat/stream")
-async def chat_stream(
     thread_name: str,
     data: MessageCreate,
     db: ThreadManager = Depends(get_db),
@@ -222,7 +173,7 @@ async def chat_stream(
                 ):
                     continue
 
-                thought, response = processor.process_chunk(chunk)
+                processor.process_chunk(chunk)
 
                 # Send incremental updates as SSE
                 if chunk.additional_kwargs.get("reasoning_content"):

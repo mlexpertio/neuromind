@@ -82,35 +82,6 @@ def get_thread(name: str):
 
 
 def send_message(thread_name: str, content: str):
-    """Send a message and get a complete response."""
-    print_section(f"Chat in '{thread_name}'")
-
-    print(f"User: {content}")
-    print("\nWaiting for response...")
-
-    response = requests.post(
-        f"{BASE_URL}/threads/{thread_name}/chat",
-        json={"content": content},
-    )
-
-    if response.status_code != 200:
-        print(f"\n[Error {response.status_code}]")
-        try:
-            error = response.json()
-            print(f"  {error.get('detail', 'Unknown error')}")
-        except json.JSONDecodeError:
-            print(f"  {response.text}")
-        return
-
-    data = response.json()
-
-    if data.get("reasoning"):
-        print(f"\n[Reasoning]\n{data['reasoning'][:200]}...")
-
-    print(f"\nAssistant: {data['response']}")
-
-
-def send_message_streaming(thread_name: str, content: str):
     """Send a message and stream the response via SSE."""
     print_section(f"Streaming Chat in '{thread_name}'")
 
@@ -119,7 +90,7 @@ def send_message_streaming(thread_name: str, content: str):
 
     try:
         response = requests.post(
-            f"{BASE_URL}/threads/{thread_name}/chat/stream",
+            f"{BASE_URL}/threads/{thread_name}/chat",
             json={"content": content},
             stream=True,
             timeout=60,
@@ -201,34 +172,24 @@ def main():
     print("  NEUROMIND API CLIENT DEMO")
     print("=" * 50)
 
-    # 1. Check API health
     health_check()
 
-    # 2. List available personas
     list_personas()
 
-    # 3. Create a new thread with coder persona
     thread = create_thread("api-demo", "coder")
 
-    # 4. List all threads
     list_threads()
 
-    # 5. Get thread details
     get_thread(thread["name"])
 
-    # 6. Send a regular chat message
     send_message(thread["name"], "What is a Python decorator in one sentence?")
 
-    # 7. Get message history
     get_message_history(thread["name"])
 
-    # 8. Send a streaming message
-    send_message_streaming(thread["name"], "Give me a simple example of a decorator.")
+    send_message(thread["name"], "Give me a simple example of a decorator.")
 
-    # 9. Show updated history
     get_message_history(thread["name"])
 
-    # 10. Clear messages (optional - uncomment to test)
     # clear_messages("api-demo")
     # get_message_history("api-demo")
 
