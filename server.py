@@ -1,9 +1,10 @@
 import json
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -12,6 +13,8 @@ from pydantic import BaseModel, Field
 from neuromind.config import Config, Persona
 from neuromind.stream_processor import StreamProcessor
 from neuromind.thread_manager import Thread, ThreadManager
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -45,6 +48,11 @@ class MessageResponse(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     reasoning: str | None = None
+
+
+class ErrorDetail(BaseModel):
+    error: str
+    detail: str | None = None
 
 
 class PersonaResponse(BaseModel):
@@ -145,7 +153,7 @@ def _build_context(thread: Thread, user_input: str, personas: dict, db: ThreadMa
 
 
 @app.post("/threads/{thread_name}/chat", response_model=ChatResponse)
-def chat(
+async def chat(
     thread_name: str,
     data: MessageCreate,
     db: ThreadManager = Depends(get_db),
@@ -157,10 +165,31 @@ def chat(
 
     processor = StreamProcessor()
 
-    for chunk in llm.stream(context):
-        if not chunk.content and not chunk.additional_kwargs.get("reasoning_content"):
-            continue
-        processor.process_chunk(chunk)
+    try:
+        async for chunk in llm.astream(context):
+            if not chunk.content and not chunk.additional_kwargs.get(
+                "reasoning_content"
+            ):
+                continue
+            processor.process_chunk(chunk)
+    except ConnectionError as e:
+        logger.error(f"LLM connection failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI model unavailable. Please ensure {Config.MODEL.name} is running.",
+        )
+    except TimeoutError as e:
+        logger.error(f"LLM request timed out: {e}")
+        raise HTTPException(
+            status_code=504,
+            detail="AI model request timed out. Please try again.",
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error during chat: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while processing your request: {str(e)}",
+        )
 
     # Persist the conversation
     db.add_message(thread.id, "human", data.content)
@@ -173,7 +202,7 @@ def chat(
 
 
 @app.post("/threads/{thread_name}/chat/stream")
-def chat_stream(
+async def chat_stream(
     thread_name: str,
     data: MessageCreate,
     db: ThreadManager = Depends(get_db),
@@ -183,28 +212,39 @@ def chat_stream(
     thread = db.get_or_create_thread(thread_name)
     context = _build_context(thread, data.content, app.state.personas, db)
 
-    def generate() -> AsyncGenerator[str, None]:
+    async def generate() -> AsyncGenerator[str, None]:
         processor = StreamProcessor()
 
-        for chunk in llm.stream(context):
-            if not chunk.content and not chunk.additional_kwargs.get(
-                "reasoning_content"
-            ):
-                continue
+        try:
+            async for chunk in llm.astream(context):
+                if not chunk.content and not chunk.additional_kwargs.get(
+                    "reasoning_content"
+                ):
+                    continue
 
-            thought, response = processor.process_chunk(chunk)
+                thought, response = processor.process_chunk(chunk)
 
-            # Send incremental updates as SSE
-            if chunk.additional_kwargs.get("reasoning_content"):
-                yield f"data: {json.dumps({'type': 'reasoning', 'content': chunk.additional_kwargs['reasoning_content']})}\n\n"
-            elif chunk.content:
-                yield f"data: {json.dumps({'type': 'content', 'content': chunk.content})}\n\n"
+                # Send incremental updates as SSE
+                if chunk.additional_kwargs.get("reasoning_content"):
+                    yield f"data: {json.dumps({'type': 'reasoning', 'content': chunk.additional_kwargs['reasoning_content']})}\n\n"
+                elif chunk.content:
+                    yield f"data: {json.dumps({'type': 'content', 'content': chunk.content})}\n\n"
 
-        # Persist after streaming completes
-        db.add_message(thread.id, "human", data.content)
-        db.add_message(thread.id, "ai", processor.full_content)
+            # Persist after streaming completes successfully
+            db.add_message(thread.id, "human", data.content)
+            db.add_message(thread.id, "ai", processor.full_content)
 
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except ConnectionError as e:
+            logger.error(f"LLM connection failed during stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': 'connection_failed', 'message': f'AI model unavailable. Please ensure {Config.MODEL.name} is running.'})}\n\n"
+        except TimeoutError as e:
+            logger.error(f"LLM request timed out during stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': 'timeout', 'message': 'AI model request timed out. Please try again.'})}\n\n"
+        except Exception as e:
+            logger.exception(f"Unexpected error during stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': 'internal_error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

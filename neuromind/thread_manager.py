@@ -20,7 +20,9 @@ class Thread:
 
 class ThreadManager:
     def __init__(self, db_path: str):
-        self.conn = sqlite3.connect(db_path)
+        # check_same_thread=False allows connection use across async thread boundaries
+        # Safe here since FastAPI creates one ThreadManager per request via Depends()
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._migrate()
 

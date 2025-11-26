@@ -92,6 +92,16 @@ def send_message(thread_name: str, content: str):
         f"{BASE_URL}/threads/{thread_name}/chat",
         json={"content": content},
     )
+
+    if response.status_code != 200:
+        print(f"\n[Error {response.status_code}]")
+        try:
+            error = response.json()
+            print(f"  {error.get('detail', 'Unknown error')}")
+        except json.JSONDecodeError:
+            print(f"  {response.text}")
+        return
+
     data = response.json()
 
     if data.get("reasoning"):
@@ -107,11 +117,22 @@ def send_message_streaming(thread_name: str, content: str):
     print(f"User: {content}")
     print("\nAssistant: ", end="", flush=True)
 
-    response = requests.post(
-        f"{BASE_URL}/threads/{thread_name}/chat/stream",
-        json={"content": content},
-        stream=True,
-    )
+    try:
+        response = requests.post(
+            f"{BASE_URL}/threads/{thread_name}/chat/stream",
+            json={"content": content},
+            stream=True,
+            timeout=60,
+        )
+    except requests.exceptions.ConnectionError:
+        print("\n\n[Error] Could not connect to API server.")
+        return
+    except requests.exceptions.Timeout:
+        print("\n\n[Error] Request timed out.")
+        return
+
+    reasoning_started = False
+    content_started = False
 
     for line in response.iter_lines(decode_unicode=True):
         if not line or not line.startswith("data:"):
@@ -120,8 +141,21 @@ def send_message_streaming(thread_name: str, content: str):
         try:
             event = json.loads(line[5:].strip())
 
-            if event["type"] == "content":
+            if event["type"] == "reasoning":
+                if not reasoning_started:
+                    print("\n[Reasoning]")
+                    reasoning_started = True
                 print(event["content"], end="", flush=True)
+            elif event["type"] == "content":
+                if not content_started:
+                    if reasoning_started:
+                        print("\n\n[Response]")
+                    content_started = True
+                print(event["content"], end="", flush=True)
+            elif event["type"] == "error":
+                print(f"\n\n[Error: {event.get('error', 'unknown')}]")
+                print(f"  {event.get('message', 'An error occurred')}")
+                return
             elif event["type"] == "done":
                 print("\n\n[Stream complete]")
         except json.JSONDecodeError:
