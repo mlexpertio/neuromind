@@ -1,8 +1,6 @@
 import sys
 from typing import List
 
-from rich.prompt import Confirm, Prompt
-
 from neuromind.api_client import APIError, NeuroMindClient, StreamEventType, ThreadInfo
 from neuromind.config import Config, Persona
 from neuromind.ui_manager import UIManager
@@ -18,9 +16,8 @@ class NeuroApp:
             health = self.client.health_check()
             self.model_name = health.get("model", "unknown")
         except APIError as e:
-            self.ui.console.print(
-                f"[bold red]Critical Error:[/bold red] {e.message}\n"
-                "Make sure the server is running: python start_server.py"
+            self.ui.print_critical_error(
+                f"{e.message}\nMake sure the server is running: python start_server.py"
             )
             sys.exit(1)
 
@@ -36,18 +33,11 @@ class NeuroApp:
             return
 
         name = args[0]
-
-        self.ui.console.print("\n[bold]Select Persona:[/bold]")
         all_personas = list(Persona)
-        for idx, persona in enumerate(all_personas, 1):
-            self.ui.console.print(f"  [green]{idx}.[/green] {persona.value}")
-
-        choice = Prompt.ask(
-            "Choice",
-            choices=[str(i) for i in range(1, len(all_personas) + 1)],
-            default="1",
+        choice = self.ui.prompt_choice(
+            "Select Persona", [p.value for p in all_personas]
         )
-        persona = all_personas[int(choice) - 1]
+        persona = all_personas[choice]
 
         self.active_thread = self.client.get_or_create_thread(name, persona)
         self.ui.print_info(f"Switched to '{name}' ({persona.value})")
@@ -62,7 +52,7 @@ class NeuroApp:
         self.ui.print_info(f"Active thread: {name}")
 
     def _cmd_clear(self):
-        if Confirm.ask(f"Wipe memory for '{self.active_thread.name}'?"):
+        if self.ui.confirm(f"Wipe memory for '{self.active_thread.name}'?"):
             self.client.clear_messages(self.active_thread.name)
             self.ui.print_info("Memory wiped.")
 

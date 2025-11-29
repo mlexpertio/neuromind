@@ -15,7 +15,7 @@ from neuromind.config import Persona
 class Thread:
     id: int
     name: str
-    persona: Persona
+    persona: str
 
 
 class ThreadManager:
@@ -47,21 +47,27 @@ class ThreadManager:
                 )
             """)
 
-    def get_or_create_thread(
-        self, name: str, persona: Persona = Persona.NEUROMIND
-    ) -> Thread:
+    def get_thread(self, name: str) -> Thread | None:
         row = self.conn.execute(
             "SELECT * FROM threads WHERE name = ?", (name,)
         ).fetchone()
 
         if row:
             return Thread(id=row["id"], name=row["name"], persona=row["persona"])
+        return None
+
+    def get_or_create_thread(
+        self, name: str, persona: Persona = Persona.NEUROMIND
+    ) -> Thread:
+        thread = self.get_thread(name)
+        if thread:
+            return thread
 
         cursor = self.conn.execute(
             "INSERT INTO threads (name, persona) VALUES (?, ?)", (name, persona.value)
         )
         self.conn.commit()
-        return Thread(id=cursor.lastrowid, name=name, persona=persona)
+        return Thread(id=cursor.lastrowid, name=name, persona=persona.value)
 
     def list_threads(self) -> List[Tuple[str, str, int]]:
         """Returns (name, persona, message_count)."""

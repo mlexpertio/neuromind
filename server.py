@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -121,16 +121,20 @@ def create_thread(data: ThreadCreate, db: ThreadManager = Depends(get_db)):
 
 
 @app.get("/threads/{thread_name}", response_model=ThreadResponse)
-def get_thread(thread_name: str, db: ThreadManager = Depends(get_db)):
+def get_thread_endpoint(thread_name: str, db: ThreadManager = Depends(get_db)):
     """Get a thread by name."""
-    thread = db.get_or_create_thread(thread_name)
+    thread = db.get_thread(thread_name)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
     return ThreadResponse(id=thread.id, name=thread.name, persona=thread.persona)
 
 
 @app.get("/threads/{thread_name}/messages", response_model=list[MessageResponse])
 def get_messages(thread_name: str, db: ThreadManager = Depends(get_db)):
     """Get message history for a thread."""
-    thread = db.get_or_create_thread(thread_name)
+    thread = db.get_thread(thread_name)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
     history = db.get_history(thread.id)
     return [MessageResponse(role=msg.type, content=msg.content) for msg in history]
 
@@ -138,12 +142,13 @@ def get_messages(thread_name: str, db: ThreadManager = Depends(get_db)):
 @app.delete("/threads/{thread_name}/messages", status_code=204)
 def clear_messages(thread_name: str, db: ThreadManager = Depends(get_db)):
     """Clear all messages in a thread."""
-    thread = db.get_or_create_thread(thread_name)
+    thread = db.get_thread(thread_name)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
     db.clear_messages(thread.id)
 
 
 def _build_context(thread: Thread, user_input: str, personas: dict, db: ThreadManager):
-    """Build the message context for the LLM."""
     sys_prompt = personas.get(thread.persona, personas[Persona.NEUROMIND.value])
     messages = [SystemMessage(content=sys_prompt)]
     messages.extend(db.get_history(thread.id))
