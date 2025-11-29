@@ -11,7 +11,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from neuromind.config import Config, Persona
-from neuromind.stream_processor import StreamProcessor
 from neuromind.thread_manager import Thread, ThreadManager
 
 logger = logging.getLogger(__name__)
@@ -164,7 +163,7 @@ async def chat(
     context = _build_context(thread, data.content, app.state.personas, db)
 
     async def generate() -> AsyncGenerator[str, None]:
-        processor = StreamProcessor()
+        full_content = ""
 
         try:
             async for chunk in llm.astream(context):
@@ -173,17 +172,16 @@ async def chat(
                 ):
                     continue
 
-                processor.process_chunk(chunk)
+                if chunk.content:
+                    full_content += chunk.content
 
-                # Send incremental updates as SSE
                 if chunk.additional_kwargs.get("reasoning_content"):
                     yield f"data: {json.dumps({'type': 'reasoning', 'content': chunk.additional_kwargs['reasoning_content']})}\n\n"
                 elif chunk.content:
                     yield f"data: {json.dumps({'type': 'content', 'content': chunk.content})}\n\n"
 
-            # Persist after streaming completes successfully
             db.add_message(thread.id, "human", data.content)
-            db.add_message(thread.id, "ai", processor.full_content)
+            db.add_message(thread.id, "ai", full_content)
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
