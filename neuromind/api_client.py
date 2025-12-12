@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Generator, List, Tuple
 
-import requests
+import httpx
 
 from neuromind.config import Persona
 
@@ -51,17 +51,17 @@ class NeuroMindClient:
     def health_check(self) -> dict:
         """Check if the API server is healthy."""
         try:
-            response = requests.get(f"{self.base_url}/health", timeout=5)
+            response = httpx.get(f"{self.base_url}/health", timeout=5)
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.ConnectionError:
+        except httpx.ConnectError:
             raise APIError("Could not connect to API server. Is it running?")
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             raise APIError("Health check timed out.")
 
     def list_personas(self) -> List[dict]:
         """List all available personas."""
-        response = requests.get(f"{self.base_url}/personas", timeout=self.timeout)
+        response = httpx.get(f"{self.base_url}/personas", timeout=self.timeout)
         response.raise_for_status()
         return response.json()
 
@@ -70,7 +70,7 @@ class NeuroMindClient:
         List all threads.
         Returns list of (name, persona, message_count) tuples.
         """
-        response = requests.get(f"{self.base_url}/threads", timeout=self.timeout)
+        response = httpx.get(f"{self.base_url}/threads", timeout=self.timeout)
         response.raise_for_status()
         threads = response.json()
         return [(t["name"], t["persona"], t["message_count"]) for t in threads]
@@ -80,14 +80,14 @@ class NeuroMindClient:
     ) -> ThreadInfo:
         """Get or create a thread by name."""
         # First try to get existing thread
-        response = requests.get(f"{self.base_url}/threads/{name}", timeout=self.timeout)
+        response = httpx.get(f"{self.base_url}/threads/{name}", timeout=self.timeout)
 
         if response.status_code == 200:
             data = response.json()
             return ThreadInfo(id=data["id"], name=data["name"], persona=data["persona"])
 
         # Create new thread if it doesn't exist
-        response = requests.post(
+        response = httpx.post(
             f"{self.base_url}/threads",
             json={"name": name, "persona": persona.value},
             timeout=self.timeout,
@@ -98,7 +98,7 @@ class NeuroMindClient:
 
     def clear_messages(self, thread_name: str) -> None:
         """Clear all messages in a thread."""
-        response = requests.delete(
+        response = httpx.delete(
             f"{self.base_url}/threads/{thread_name}/messages", timeout=self.timeout
         )
         response.raise_for_status()
@@ -111,51 +111,51 @@ class NeuroMindClient:
         Yields StreamEvent objects for each chunk.
         """
         try:
-            response = requests.post(
+            with httpx.stream(
+                "POST",
                 f"{self.base_url}/threads/{thread_name}/chat",
                 json={"content": content},
-                stream=True,
                 timeout=self.timeout,
-            )
-            response.raise_for_status()
-        except requests.exceptions.ConnectionError:
+            ) as response:
+                response.raise_for_status()
+
+                for line in response.iter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+
+                    try:
+                        event_data = json.loads(line[5:].strip())
+                        event_type = event_data.get("type", "unknown")
+
+                        if event_type == "reasoning":
+                            yield StreamEvent(
+                                type=StreamEventType.REASONING,
+                                content=event_data["content"],
+                            )
+                        elif event_type == "content":
+                            yield StreamEvent(
+                                type=StreamEventType.CONTENT,
+                                content=event_data["content"],
+                            )
+                        elif event_type == "error":
+                            yield StreamEvent(
+                                type=StreamEventType.ERROR,
+                                error=event_data.get("error"),
+                                message=event_data.get("message"),
+                            )
+                        elif event_type == "done":
+                            yield StreamEvent(type=StreamEventType.DONE)
+                    except json.JSONDecodeError:
+                        continue
+        except httpx.ConnectError:
             yield StreamEvent(
                 type=StreamEventType.ERROR,
                 error="connection_failed",
                 message="Could not connect to API server.",
             )
-            return
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             yield StreamEvent(
                 type=StreamEventType.ERROR,
                 error="timeout",
                 message="Request timed out.",
             )
-            return
-
-        for line in response.iter_lines(decode_unicode=True):
-            if not line or not line.startswith("data:"):
-                continue
-
-            try:
-                event_data = json.loads(line[5:].strip())
-                event_type = event_data.get("type", "unknown")
-
-                if event_type == "reasoning":
-                    yield StreamEvent(
-                        type=StreamEventType.REASONING, content=event_data["content"]
-                    )
-                elif event_type == "content":
-                    yield StreamEvent(
-                        type=StreamEventType.CONTENT, content=event_data["content"]
-                    )
-                elif event_type == "error":
-                    yield StreamEvent(
-                        type=StreamEventType.ERROR,
-                        error=event_data.get("error"),
-                        message=event_data.get("message"),
-                    )
-                elif event_type == "done":
-                    yield StreamEvent(type=StreamEventType.DONE)
-            except json.JSONDecodeError:
-                continue

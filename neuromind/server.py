@@ -23,12 +23,6 @@ class ThreadCreate(BaseModel):
     persona: Persona = Persona.NEUROMIND
 
 
-class ThreadResponse(BaseModel):
-    id: int
-    name: str
-    persona: str
-
-
 class ThreadListItem(BaseModel):
     name: str
     persona: str
@@ -42,16 +36,6 @@ class MessageCreate(BaseModel):
 class MessageResponse(BaseModel):
     role: str
     content: str
-
-
-class ChatResponse(BaseModel):
-    response: str
-    reasoning: str | None = None
-
-
-class ErrorDetail(BaseModel):
-    error: str
-    detail: str | None = None
 
 
 class PersonaResponse(BaseModel):
@@ -113,20 +97,19 @@ def list_threads(db: ThreadManager = Depends(get_db)):
     ]
 
 
-@app.post("/threads", response_model=ThreadResponse, status_code=201)
+@app.post("/threads", response_model=Thread, status_code=201)
 def create_thread(data: ThreadCreate, db: ThreadManager = Depends(get_db)):
     """Create a new conversation thread."""
-    thread = db.get_or_create_thread(data.name, data.persona)
-    return ThreadResponse(id=thread.id, name=thread.name, persona=thread.persona)
+    return db.get_or_create_thread(data.name, data.persona)
 
 
-@app.get("/threads/{thread_name}", response_model=ThreadResponse)
+@app.get("/threads/{thread_name}", response_model=Thread)
 def get_thread_endpoint(thread_name: str, db: ThreadManager = Depends(get_db)):
     """Get a thread by name."""
     thread = db.get_thread(thread_name)
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    return ThreadResponse(id=thread.id, name=thread.name, persona=thread.persona)
+    return thread
 
 
 @app.get("/threads/{thread_name}/messages", response_model=list[MessageResponse])

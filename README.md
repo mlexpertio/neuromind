@@ -4,13 +4,13 @@
 
 A **private AI assistant** designed for users who prefer the command line over web UIs.
 
-Built with [LangChain](https://www.langchain.com/), [Rich](https://github.com/Textualize/rich), and [SQLite](https://www.sqlite.org/), NeuroMind provides an environment for interacting with local (Ollama) or cloud (Google Gemini) LLMs with persistent memory and specialized personas.
+Built with [LangChain](https://www.langchain.com/), [Rich](https://github.com/Textualize/rich), and [SQLModel](https://sqlmodel.tiangolo.com/), NeuroMind provides an environment for interacting with local (Ollama) or cloud (Google Gemini) LLMs with persistent memory and specialized personas.
 
 ## Features
 
 - **Multi-Persona System** – Switch between specialized agents like the **Logician**, the **Coder**, or the **Roaster**.
 - **Model Agnostic** – Supports local inference via **Ollama** (e.g. Qwen 3) and cloud inference via **Google GenAI**.
-- **Persistent Memory** – SQLite-backed thread management for storing and retrieving conversations.
+- **Persistent Memory** – SQLModel-powered thread management for storing and retrieving conversations.
 - **Rich Terminal UI** – Markdown rendering, syntax highlighting, and streaming in your console.
 - **Reasoning Chains** – Visualization for "thinking" models, displaying reasoning steps.
 
@@ -29,7 +29,7 @@ Built with [LangChain](https://www.langchain.com/), [Rich](https://github.com/Te
        │ Manage State
        ▼
 ┌─────────────┐        ┌──────────────┐
-│  ThreadMgr  │───────▶│    SQLite    │ (Persistent Storage)
+│  ThreadMgr  │───────▶│   SQLModel   │ (Persistent Storage)
 └──────┬──────┘        └──────────────┘
        │
        │ Build Context
@@ -117,8 +117,7 @@ The API will be available at `http://localhost:8000`. Interactive docs at `/docs
 | `GET` | `/threads/{name}` | Get thread by name |
 | `GET` | `/threads/{name}/messages` | Get message history |
 | `DELETE` | `/threads/{name}/messages` | Clear thread messages |
-| `POST` | `/threads/{name}/chat` | Send message, get response |
-| `POST` | `/threads/{name}/chat/stream` | Send message, stream response (SSE) |
+| `POST` | `/threads/{name}/chat` | Send message and stream response (SSE) |
 
 #### Quick Examples
 
@@ -128,18 +127,11 @@ curl -X POST http://localhost:8000/threads \
   -H "Content-Type: application/json" \
   -d '{"name": "dev", "persona": "coder"}'
 
-# Chat
-curl -X POST http://localhost:8000/threads/dev/chat \
+# Chat (streams response via SSE)
+curl -N -X POST http://localhost:8000/threads/dev/chat \
   -H "Content-Type: application/json" \
   -d '{"content": "Explain Python decorators"}'
-
-# Stream response
-curl -N -X POST http://localhost:8000/threads/dev/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Hello!"}'
 ```
-
-Run the `client_example.py` for a complete Python client demonstration.
 
 ### Commands
 
@@ -179,11 +171,12 @@ class Config:
 | File / Folder | Description |
 |---------------|-------------|
 | `app.py` | CLI entry point and application loop. |
-| `server.py` | REST API server (FastAPI). |
-| `client_example.py` | Example Python client for the API. |
+| `start_server.py` | Script to start the REST API server. |
+| `minimal_server.py` | Minimal FastAPI server example. |
+| `neuromind/server.py` | REST API server (FastAPI). |
+| `neuromind/api_client.py` | HTTP client for the REST API (using httpx). |
 | `neuromind/config.py` | Configuration for models, paths, and constants. |
-| `neuromind/thread_manager.py` | SQLite database wrapper for managing threads and messages. |
-| `neuromind/stream_processor.py` | Handles real-time parsing of LLM chunks (content vs. reasoning). |
+| `neuromind/thread_manager.py` | SQLModel-based database layer for managing threads and messages. |
 | `neuromind/ui_manager.py` | Manages the Rich TUI, streaming display, and user input. |
 | `data/personas/*.md` | Markdown system prompts defining agent behaviors. |
 | `pyproject.toml` | Project dependencies and metadata. |

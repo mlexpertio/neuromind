@@ -1,105 +1,90 @@
-import sqlite3
-from dataclasses import dataclass
 from typing import List, Tuple
 
-from langchain_core.messages import (
-    AIMessage,
-    BaseMessage,
-    HumanMessage,
-)
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from sqlmodel import Field, Session, SQLModel, create_engine, func, select
 
 from neuromind.config import Persona
 
 
-@dataclass
-class Thread:
-    id: int
-    name: str
+class Thread(SQLModel, table=True):
+    """A conversation thread with a specific persona."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)
     persona: str
+
+
+class Message(SQLModel, table=True):
+    """A message in a conversation thread."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    thread_id: int = Field(foreign_key="thread.id")
+    role: str
+    content: str
 
 
 class ThreadManager:
     def __init__(self, db_path: str):
-        # check_same_thread=False allows connection use across async thread boundaries
-        # Safe here since FastAPI creates one ThreadManager per request via Depends()
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self._migrate()
-
-    def _migrate(self):
-        with self.conn:
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS threads (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE NOT NULL,
-                    persona TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    thread_id INTEGER,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(thread_id) REFERENCES threads(id)
-                )
-            """)
+        self.engine = create_engine(
+            f"sqlite:///{db_path}",
+            connect_args={"check_same_thread": False},
+        )
+        SQLModel.metadata.create_all(self.engine)
 
     def get_thread(self, name: str) -> Thread | None:
-        row = self.conn.execute(
-            "SELECT * FROM threads WHERE name = ?", (name,)
-        ).fetchone()
-
-        if row:
-            return Thread(id=row["id"], name=row["name"], persona=row["persona"])
-        return None
+        with Session(self.engine) as session:
+            return session.exec(select(Thread).where(Thread.name == name)).first()
 
     def get_or_create_thread(
         self, name: str, persona: Persona = Persona.NEUROMIND
     ) -> Thread:
-        thread = self.get_thread(name)
-        if thread:
+        with Session(self.engine) as session:
+            thread = session.exec(select(Thread).where(Thread.name == name)).first()
+            if thread:
+                return thread
+
+            thread = Thread(name=name, persona=persona.value)
+            session.add(thread)
+            session.commit()
+            session.refresh(thread)
             return thread
 
-        cursor = self.conn.execute(
-            "INSERT INTO threads (name, persona) VALUES (?, ?)", (name, persona.value)
-        )
-        self.conn.commit()
-        return Thread(id=cursor.lastrowid, name=name, persona=persona.value)
-
     def list_threads(self) -> List[Tuple[str, str, int]]:
-        """Returns (name, persona, message_count)."""
-        query = """
-            SELECT t.name, t.persona, COUNT(m.id) as count
-            FROM threads t 
-            LEFT JOIN messages m ON t.id = m.thread_id 
-            GROUP BY t.id
-        """
-        return [(r["name"], r["persona"], r["count"]) for r in self.conn.execute(query)]
+        """Returns list of (name, persona, message_count) tuples."""
+        with Session(self.engine) as session:
+            results = session.exec(
+                select(Thread.name, Thread.persona, func.count(Message.id))
+                .outerjoin(Message, Thread.id == Message.thread_id)
+                .group_by(Thread.id)
+            ).all()
+            return [(name, persona, count) for name, persona, count in results]
 
     def add_message(self, thread_id: int, role: str, content: str):
-        with self.conn:
-            self.conn.execute(
-                "INSERT INTO messages (thread_id, role, content) VALUES (?, ?, ?)",
-                (thread_id, role, content),
-            )
+        with Session(self.engine) as session:
+            message = Message(thread_id=thread_id, role=role, content=content)
+            session.add(message)
+            session.commit()
 
     def get_history(self, thread_id: int) -> List[BaseMessage]:
-        rows = self.conn.execute(
-            "SELECT role, content FROM messages WHERE thread_id = ? ORDER BY id ASC",
-            (thread_id,),
-        ).fetchall()
+        with Session(self.engine) as session:
+            messages = session.exec(
+                select(Message)
+                .where(Message.thread_id == thread_id)
+                .order_by(Message.id)
+            ).all()
 
-        history = []
-        for r in rows:
-            if r["role"] == "human":
-                history.append(HumanMessage(content=r["content"]))
-            elif r["role"] == "ai":
-                history.append(AIMessage(content=r["content"]))
-        return history
+            return [
+                HumanMessage(content=msg.content)
+                if msg.role == "human"
+                else AIMessage(content=msg.content)
+                for msg in messages
+            ]
 
     def clear_messages(self, thread_id: int):
-        with self.conn:
-            self.conn.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,))
+        with Session(self.engine) as session:
+            messages = session.exec(
+                select(Message).where(Message.thread_id == thread_id)
+            ).all()
+            for msg in messages:
+                session.delete(msg)
+            session.commit()
