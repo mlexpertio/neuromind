@@ -172,7 +172,6 @@ class Config:
 |---------------|-------------|
 | `app.py` | CLI entry point and application loop. |
 | `start_server.py` | Script to start the REST API server. |
-| `minimal_server.py` | Minimal FastAPI server example. |
 | `neuromind/server.py` | REST API server (FastAPI). |
 | `neuromind/api_client.py` | HTTP client for the REST API (using httpx). |
 | `neuromind/config.py` | Configuration for models, paths, and constants. |
