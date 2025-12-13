@@ -16,6 +16,8 @@ Built with [LangChain](https://www.langchain.com/), [Rich](https://github.com/Te
 
 ## Architecture
 
+NeuroMind uses a **client-server architecture** that separates the CLI frontend from the AI backend via a REST API with Server-Sent Events (SSE) for streaming responses.
+
 ```
 ┌─────────────┐
 │    User     │
@@ -24,16 +26,25 @@ Built with [LangChain](https://www.langchain.com/), [Rich](https://github.com/Te
        ▼
 ┌─────────────┐        ┌──────────────┐
 │  NeuroApp   │───────▶│  UIManager   │ (Rich Console)
-└──────┬──────┘        └──────────────┘
+│  (app.py)   │        └──────────────┘
+└──────┬──────┘
        │
-       │ Manage State
+       │ API Calls
        ▼
-┌─────────────┐        ┌──────────────┐
-│  ThreadMgr  │───────▶│   SQLModel   │ (Persistent Storage)
-└──────┬──────┘        └──────────────┘
-       │
-       │ Build Context
-       ▼
+┌─────────────────┐
+│ NeuroMindClient │ (HTTP Client - httpx)
+│   (client.py)   │
+└────────┬────────┘
+         │
+         │ REST API / SSE
+         ▼
+┌─────────────────┐     ┌──────────────┐
+│  FastAPI Server │────▶│  ThreadMgr   │ (SQLModel)
+│   (server.py)   │     └──────────────┘
+└────────┬────────┘
+         │
+         │ Build Context
+         ▼
 ┌─────────────┐        ┌──────────────┐
 │  LangChain  │───────▶│  Ollama/API  │ (Inference)
 └─────────────┘        └──────────────┘
@@ -88,23 +99,29 @@ python setup_check.py
 
 ## Usage
 
-### CLI Application
+### Quick Start
 
-Start the terminal application:
-
-```bash
-python app.py
-```
-
-### REST API
-
-Start the API server:
+1. **Start the API server** (required):
 
 ```bash
 python start_server.py
 ```
 
-The API will be available at `http://localhost:8000`. Interactive docs at `/docs`.
+2. **Launch the CLI application** (in a new terminal):
+
+```bash
+python app.py
+```
+
+You can also connect to a remote server:
+
+```bash
+python app.py --server http://your-server:8000
+```
+
+### REST API
+
+The server exposes a REST API at `http://localhost:8000`. Interactive docs available at `/docs`.
 
 #### Endpoints
 
@@ -172,8 +189,8 @@ class Config:
 |---------------|-------------|
 | `app.py` | CLI entry point and application loop. |
 | `start_server.py` | Script to start the REST API server. |
-| `neuromind/server.py` | REST API server (FastAPI). |
-| `neuromind/api_client.py` | HTTP client for the REST API (using httpx). |
+| `neuromind/server.py` | REST API server (FastAPI) with SSE streaming. |
+| `neuromind/client.py` | HTTP client for the REST API (using httpx). Handles SSE streaming. |
 | `neuromind/config.py` | Configuration for models, paths, and constants. |
 | `neuromind/thread_manager.py` | SQLModel-based database layer for managing threads and messages. |
 | `neuromind/ui_manager.py` | Manages the Rich TUI, streaming display, and user input. |

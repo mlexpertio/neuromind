@@ -1,7 +1,7 @@
 import sys
 from typing import List
 
-from neuromind.api_client import APIError, NeuroMindClient, StreamEventType, ThreadInfo
+from neuromind.client import APIError, NeuroMindClient, StreamEventType, ThreadInfo
 from neuromind.config import Config, Persona
 from neuromind.ui_manager import UIManager
 
